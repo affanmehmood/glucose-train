@@ -2,6 +2,18 @@ import tensorflow as tf
 import pandas as pd
 
 import sequential_net
+from tensorflow.keras.utils import plot_model
+from tensorflow.keras import backend as K
+
+
+def custom_mse(alpha=0.01):
+    def _mse(y_true, y_pred):
+        error = y_true - y_pred
+        sqr_error = K.square(error)
+        mean_sqr_error = K.mean(sqr_error)
+        sqrt_mean_sqr_error = K.sqrt(mean_sqr_error)
+        return sqrt_mean_sqr_error + K.square(alpha)
+    return _mse
 
 
 class Block(tf.keras.Model):
@@ -123,12 +135,15 @@ if __name__ == '__main__':
     test_Y.reset_index(drop=True, inplace=True)
 
     model = GlucoNet()
-    batch_size = 16
-    epochs = 100
-    model.compile(optimizer="adam", loss='mse',
+    batch_size = 64
+    epochs = 10
+    model.compile(optimizer="adam", loss=custom_mse(0.08),
                   metrics=[tf.keras.metrics.RootMeanSquaredError()])
+
     history = model.fit(train_X, train_Y, batch_size=batch_size, epochs=epochs, validation_data=(val_X, val_Y),
                         verbose=True)
+    plot_model(model, to_file='model.png')
 
     print(model.summary())
+    plot_model(model, to_file='model.png')
     # model.save('../models/gluconet_model')
