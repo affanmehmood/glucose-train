@@ -5,8 +5,11 @@ import numpy as np
 
 new_data = []
 
+minMaxDict = {}
 count = 0
 skipCount = 0
+min_max = True
+
 
 def get_real_value(arg1, arg2):
     if arg1 is not None:
@@ -20,6 +23,7 @@ def get_real_target(arg1, arg2):
         return arg1 if arg1 else -1
     else:
         return arg2 if arg2 else -1
+
 
 glucoDropCount = 0
 
@@ -129,16 +133,35 @@ with open('../datasets/enne.csv') as csv_file:
         # target
         if not eventsDict['bloodGlucose'] or eventsDict['bloodGlucose'] < 1:
             glucoDropCount += 1
+            continue
         newRow.append(eventsDict['bloodGlucose'])
         new_data.append(newRow)
 
+        # calculating min and max
+        if row[2] in minMaxDict:
+            minMaxDict[row[2]]['min'] = minMaxDict[row[2]]['min'] if minMaxDict[row[2]]['min'] < eventsDict[
+                'bloodGlucose'] else eventsDict['bloodGlucose']
+            minMaxDict[row[2]]['max'] = minMaxDict[row[2]]['max'] if minMaxDict[row[2]]['max'] > eventsDict[
+                'bloodGlucose'] else eventsDict['bloodGlucose']
+        else:
+            minMaxDict[row[2]] = {
+                'min': eventsDict['bloodGlucose'],
+                'max': eventsDict['bloodGlucose']
+            }
+
+for user in new_data:
+    user.insert(12, minMaxDict[user[0]]['min'])
+    user.insert(13, minMaxDict[user[0]]['max'])
+
+
 columns = ['userkey', 'sex', 'age', 'height', 'weight', 'waist', 'diabetic', 'smoker', 'hbA1C',
-                                     'diastolic', 'systolic', 'heartrate', 'bpm', 'ibi',
-                                     'sdnn', 'sdsd', 'rmssd', 'pnn20', 'pnn50', 'hr_mad', 'sd1', 'sd2',
-                                     's', 'sd1/sd2', 'breathingrate', 'bloodGlucose']
-
-df = pd.DataFrame(new_data, columns=columns)
-
+                           'diastolic', 'systolic', 'heartrate', 'min', 'max', 'bpm', 'ibi',
+                           'sdnn', 'sdsd', 'rmssd', 'pnn20', 'pnn50', 'hr_mad',
+                           'sd1', 'sd2', 's', 'sd1/sd2', 'breathingrate', 'bloodGlucose']
+print(new_data[0])
+print(len(columns))
+df = pd.DataFrame(new_data,
+                  columns=columns)
 
 print('orignal len before drop ', len(df))
 # dropping useless rows
@@ -161,7 +184,6 @@ categorical_features = [('sex', 'male')]
 for cf in categorical_features:
     df[cf[0]] = np.where(df[cf[0]] == cf[1], 1, 0)
 
-
 # drop duplicates
 df.drop_duplicates(keep='first', inplace=True)
 print('len after dropped duplicates', len(df))
@@ -178,6 +200,6 @@ df.drop("systolic", axis=1, inplace=True)
 
 print(df.columns)
 # saving to csv
-df.to_csv("../datasets/cleaned_enne.csv", index=False)
+df.to_csv("../datasets/cleaned_enne_minmax.csv", index=False)
 
 # todo visualize and inspect

@@ -1,7 +1,6 @@
 from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor,\
+from sklearn.ensemble import RandomForestRegressor, \
     AdaBoostRegressor, GradientBoostingRegressor
-
 
 
 def fit_predict(X_train_users, Y_train_users, X_test_users, Y_test_users, model='lr'):
@@ -67,7 +66,7 @@ def lr_fit(X_train_users, Y_train_users):
 
 
 def rf_fit(X_train_users, Y_train_users):
-    model = RandomForestRegressor(n_estimators=1000)
+    model = RandomForestRegressor(n_estimators=1000, random_state=42)
     model.fit(X_train_users, Y_train_users)
     return model
 

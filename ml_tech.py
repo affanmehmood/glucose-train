@@ -1,88 +1,84 @@
-import methcomp
-import numpy as np
-import matplotlib.pyplot as plt
 import regression_model as regressor
-
+from preprocessing.utils import scale_data_std
+import joblib
 import pandas as pd
+import tensorflow as tf
 import pickle
+from preprocessing.utils import prepare_dataset, draw_error_grids, prepare_data_splits_from_dataframe
+
+min_max = False
 
 
-def draw_error_grids(Y_test_users, y_pred_users, title):
-    plt.figure(figsize=(12, 12))
-    plot = methcomp.glucose.parkes(type=2, reference=np.array(Y_test_users.values * 18), units='mg/dl',
-                                   test=np.array(y_pred_users * 18), color_points='black')
-    plot.figure.savefig('./saved_figs/Parkes error plot - ' + title + '.png')
-
-    plt.figure(figsize=(12, 12))
-    plot = methcomp.glucose.clarke(reference=np.array(Y_test_users.values * 18), units='mg/dl',
-                                   test=np.array(y_pred_users * 18), color_points='black')
-    plot.figure.savefig('./saved_figs/Clarkes error plot - ' + title + '.png')
-
-
-def prepare_data_splits_from_dataframe(df):
-    # 70% of records for generating the training set
-    train_len = int(len(df) * 0.7)
-
-    # Remaining 30% of records for generating the evaluation and serving sets
-    eval_test_len = len(df) - train_len
-
-    # Half of the 30%, which makes up 15% of total records, for generating the evaluation set
-    eval_len = eval_test_len // 2
-
-    # Remaining 15% of total records for generating the test set
-    test_len = eval_test_len - eval_len
-
-    # Sample the train, validation and serving sets. We specify a random state for repeatable outcomes.
-    train_df = df.iloc[:train_len].sample(frac=1, random_state=48).reset_index(drop=True)
-    eval_df = df.iloc[train_len: train_len + eval_len].sample(frac=1, random_state=48).reset_index(drop=True)
-    test_df = df.iloc[train_len + eval_len: train_len + eval_len + test_len].sample(
-        frac=1, random_state=48).reset_index(drop=True)
-
-    # Testing data emulates the data that would be submitted for predictions, so it should not have the label column.
-    # test_df = test_df.drop(['bloodGlucose'], axis=1)
-
-    return train_df, eval_df, test_df
-
-
-if __name__ == '__main__':
-    data = pd.read_csv("datasets/cleaned_enne.csv")
-
-    train_df, eval_df, test_df = prepare_data_splits_from_dataframe(data)
-
+def train_rf():
+    if min_max:
+        data = pd.read_csv("datasets/cleaned_enne_minmax.csv")
+    else:
+        data = pd.read_csv("datasets/cleaned_enne.csv")
     # split target from train
-    train_X = train_df.loc[:, 'sex':'breathingrate']
-    train_Y = train_df.loc[:, 'bloodGlucose':'bloodGlucose']
+    train_X = data.loc[:, 'sex':'breathingrate']
+    train_Y = data.loc[:, 'bloodGlucose':'bloodGlucose']
     train_X.reset_index(drop=True, inplace=True)
     train_Y.reset_index(drop=True, inplace=True)
 
     # split target from eval
-    val_X = eval_df.loc[:, 'sex':'breathingrate']
-    val_Y = eval_df.loc[:, 'bloodGlucose':'bloodGlucose']
-    val_X.reset_index(drop=True, inplace=True)
-    val_Y.reset_index(drop=True, inplace=True)
-
-    # split target from test
-    test_X = test_df.loc[:, 'sex':'breathingrate']
-    test_Y = test_df.loc[:, 'bloodGlucose':'bloodGlucose']
-    test_X.reset_index(drop=True, inplace=True)
-    test_Y.reset_index(drop=True, inplace=True)
+    # val_X = eval_df.loc[:, 'sex':'breathingrate']
+    # val_Y = eval_df.loc[:, 'bloodGlucose':'bloodGlucose']
+    # val_X.reset_index(drop=True, inplace=True)
+    # val_Y.reset_index(drop=True, inplace=True)
+    #
+    # # split target from test
+    # test_X = test_df.loc[:, 'sex':'breathingrate']
+    # test_Y = test_df.loc[:, 'bloodGlucose':'bloodGlucose']
+    # test_X.reset_index(drop=True, inplace=True)
+    # test_Y.reset_index(drop=True, inplace=True)
 
     # Normalize data
-    train_X = (train_X - train_X.mean()) / train_X.std()
-    test_X = (test_X - test_X.mean()) / test_X.std()
-    val_X = (val_X - val_X.mean()) / val_X.std()
+    train_X, scaler = scale_data_std(train_X)
 
-    rf_model = regressor.gb_fit(train_X, train_Y)
-    # with open('saved_ml_model/rf_model.pkl', 'wb') as fid:
-    #     pickle.dump(rf_model, fid)
+    rf_model = regressor.rf_fit(train_X, train_Y)
+    with open('./models/rf_model_minimax_{}.pkl'.format(min_max), 'wb') as fid:
+        pickle.dump(rf_model, fid)
 
-    # rf_model = pickle.load(open('saved_ml_model/rf_model.pkl', 'rb'))
+    joblib.dump(scaler,
+                './models/rf_model_minimax_{}_scaler.gz'
+                .format(min_max))
 
-    y_pred_users = rf_model.predict(test_X)
 
-    df = pd.DataFrame()
-    df['userkey'] = test_df['userkey']
-    df['bloodGlucose'] = test_Y['bloodGlucose']
-    df['prediction'] = y_pred_users
+def load_and_eval_model_trail_new(model, scalar, csv_file_path):
+    data = prepare_dataset(csv_file_path, min_max=min_max)
+    comp_data_X = data.loc[:, 'sex':'bloodGlucose']
+    comp_data_Y = pd.DataFrame()
+    comp_data_Y['bloodGlucose'] = comp_data_X['bloodGlucose']
+    comp_data_X.drop('bloodGlucose', axis=1, inplace=True)
 
-    draw_error_grids(test_Y, y_pred_users, 'rf')
+    comp_data_X = scalar.transform(comp_data_X)
+
+    predictions = model.predict(comp_data_X)
+
+    predictions = [pred for pred in predictions]
+    ground_truth = [gt[0] for gt in comp_data_Y.values]
+    # print(list(zip(ground_truth, predictions)))
+    mae = tf.keras.losses.MeanAbsoluteError()
+    print('Mean absolute error on trail 3:', mae(ground_truth, predictions).numpy())
+
+    og_df = pd.read_csv(csv_file_path)
+    og_df = og_df[og_df['Glucometer Values'].notna()]
+    og_df['Glucometer Original'] = og_df['Glucometer Values']
+    og_df['Predictions'] = predictions
+    og_df.to_excel(csv_file_path[:len(csv_file_path) - 4] + 'Reg-RF-PREDS.xlsx')
+
+    draw_error_grids(og_df['Glucometer Original'], og_df['Predictions'],
+                     'rf_model_min_max_{}'.format(min_max))
+
+
+if __name__ == '__main__':
+    train_rf()
+    rf_model = pickle.load(open('./models/rf_model_minimax_{}.pkl'.format(min_max), 'rb'))
+    scaler = joblib.load('./models/rf_model_minimax_{}'.format(min_max) + '_scaler.gz')
+    csv_paths = [
+        # 'datasets/5979403437824095900alltrialrecord_update.csv',
+        # 'datasets/-4580253642453236142-466387376852218172alltrialrecord.csv',
+        'datasets/-8845707664459066312alltrialdata-05-16_05-18.csv'
+    ]
+    for csv_path in csv_paths:
+        load_and_eval_model_trail_new(model=rf_model, scalar=scaler, csv_file_path=csv_path)

@@ -1,7 +1,7 @@
 import tensorflow as tf
 import pandas as pd
 
-import sequential_net
+import sequential_net_softmax_forsaken
 from tensorflow.keras.utils import plot_model
 from tensorflow.keras import backend as K
 
